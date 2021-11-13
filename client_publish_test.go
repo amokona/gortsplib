@@ -802,22 +802,29 @@ func TestClientPublishRTCPReport(t *testing.T) {
 		err = inTH.Read(req.Header["Transport"])
 		require.NoError(t, err)
 
-		th := headers.Transport{
-			Delivery: func() *headers.TransportDelivery {
-				v := headers.TransportDeliveryUnicast
-				return &v
-			}(),
-			Protocol:       headers.TransportProtocolTCP,
-			InterleavedIDs: inTH.InterleavedIDs,
-		}
-
 		err = base.Response{
 			StatusCode: base.StatusOK,
 			Header: base.Header{
-				"Transport": th.Write(),
+				"Transport": headers.Transport{
+					Delivery: func() *headers.TransportDelivery {
+						v := headers.TransportDeliveryUnicast
+						return &v
+					}(),
+					Protocol:    headers.TransportProtocolUDP,
+					ClientPorts: inTH.ClientPorts,
+					ServerPorts: &[2]int{34556, 34557},
+				}.Write(),
 			},
 		}.Write(bconn.Writer)
 		require.NoError(t, err)
+
+		l1, err := net.ListenPacket("udp", "localhost:34556")
+		require.NoError(t, err)
+		defer l1.Close()
+
+		l2, err := net.ListenPacket("udp", "localhost:34557")
+		require.NoError(t, err)
+		defer l2.Close()
 
 		req, err = readRequest(bconn.Reader)
 		require.NoError(t, err)
@@ -830,18 +837,15 @@ func TestClientPublishRTCPReport(t *testing.T) {
 
 		rr := rtcpreceiver.New(nil, 90000)
 
-		var f base.InterleavedFrame
-		f.Payload = make([]byte, 2048)
-		err = f.Read(bconn.Reader)
+		buf := make([]byte, 2048)
+		n, _, err := l1.ReadFrom(buf)
 		require.NoError(t, err)
-		require.Equal(t, 0, f.Channel)
-		rr.ProcessPacketRTP(time.Now(), f.Payload)
+		rr.ProcessPacketRTP(time.Now(), buf[:n])
 
-		f.Payload = make([]byte, 2048)
-		err = f.Read(bconn.Reader)
+		buf = make([]byte, 2048)
+		n, _, err = l2.ReadFrom(buf)
 		require.NoError(t, err)
-		require.Equal(t, 1, f.Channel)
-		pkt, err := rtcp.Unmarshal(f.Payload)
+		pkt, err := rtcp.Unmarshal(buf[:n])
 		require.NoError(t, err)
 		sr, ok := pkt[0].(*rtcp.SenderReport)
 		require.True(t, ok)
@@ -852,18 +856,17 @@ func TestClientPublishRTCPReport(t *testing.T) {
 			PacketCount: 1,
 			OctetCount:  4,
 		}, sr)
-		rr.ProcessPacketRTCP(time.Now(), f.Payload)
+		rr.ProcessPacketRTCP(time.Now(), buf[:n])
 
-		err = base.InterleavedFrame{
-			Channel: 1,
-			Payload: rr.Report(time.Now()),
-		}.Write(bconn.Writer)
+		_, err = l2.WriteTo(rr.Report(time.Now()), &net.UDPAddr{
+			IP:   net.ParseIP("127.0.0.1"),
+			Port: inTH.ClientPorts[1],
+		})
 		require.NoError(t, err)
 
-		f.Payload = make([]byte, 2048)
-		err = f.Read(bconn.Reader)
+		buf = make([]byte, 2048)
+		_, _, err = l1.ReadFrom(buf)
 		require.NoError(t, err)
-		require.Equal(t, 0, f.Channel)
 
 		req, err = readRequest(bconn.Reader)
 		require.NoError(t, err)
@@ -875,10 +878,6 @@ func TestClientPublishRTCPReport(t *testing.T) {
 	}()
 
 	c := &Client{
-		Transport: func() *Transport {
-			v := TransportTCP
-			return &v
-		}(),
 		senderReportPeriod: 1 * time.Second,
 	}
 

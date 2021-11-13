@@ -690,15 +690,16 @@ func (c *Client) playRecordStart() {
 
 	// start timers
 	if c.state == clientStatePlay {
-		c.reportTimer = time.NewTimer(c.receiverReportPeriod)
 		c.keepaliveTimer = time.NewTimer(clientKeepalivePeriod)
 
 		switch *c.protocol {
 		case TransportUDP:
+			c.reportTimer = time.NewTimer(c.receiverReportPeriod)
 			c.checkStreamTimer = time.NewTimer(c.InitialUDPReadTimeout)
 			c.checkStreamInitial = true
 
 		case TransportUDPMulticast:
+			c.reportTimer = time.NewTimer(c.receiverReportPeriod)
 			c.checkStreamTimer = time.NewTimer(clientCheckStreamPeriod)
 
 		default: // TCP
@@ -706,7 +707,13 @@ func (c *Client) playRecordStart() {
 			c.tcpLastFrameTime = time.Now().Unix()
 		}
 	} else {
-		c.reportTimer = time.NewTimer(c.senderReportPeriod)
+		switch *c.protocol {
+		case TransportUDP:
+			c.reportTimer = time.NewTimer(c.senderReportPeriod)
+
+		case TransportUDPMulticast:
+			c.reportTimer = time.NewTimer(c.senderReportPeriod)
+		}
 	}
 
 	// for some reason, SetReadDeadline() must always be called in the same
