@@ -332,7 +332,7 @@ func (ss *ServerSession) run() {
 				}
 
 			case <-receiverReportTicker.C:
-				if ss.state != ServerSessionStatePublish {
+				if ss.state != ServerSessionStatePublish || *ss.setuppedTransport == TransportTCP {
 					continue
 				}
 
@@ -526,10 +526,8 @@ func (ss *ServerSession) handleRequest(sc *ServerConn, req *base.Request) (*base
 
 		ss.announcedTracks = make([]ServerSessionAnnouncedTrack, len(tracks))
 		for trackID, track := range tracks {
-			clockRate, _ := track.ClockRate()
 			ss.announcedTracks[trackID] = ServerSessionAnnouncedTrack{
-				track:        track,
-				rtcpReceiver: rtcpreceiver.New(nil, clockRate),
+				track: track,
 			}
 		}
 
@@ -753,6 +751,11 @@ func (ss *ServerSession) handleRequest(sc *ServerConn, req *base.Request) (*base
 		}
 
 		ss.setuppedTracks[trackID] = sst
+
+		if ss.state == ServerSessionStatePrePublish && *ss.setuppedTransport != TransportTCP {
+			clockRate, _ := ss.announcedTracks[trackID].track.ClockRate()
+			ss.announcedTracks[trackID].rtcpReceiver = rtcpreceiver.New(nil, clockRate)
+		}
 
 		res.Header["Transport"] = th.Write()
 
