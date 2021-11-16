@@ -35,7 +35,7 @@ const (
 	clientReadBufferSize     = 4096
 	clientWriteBufferSize    = 4096
 	clientCheckStreamPeriod  = 1 * time.Second
-	clientUDPKeepalivePeriod = 30 * time.Second
+	clientUDPKeepalivePeriod = 20 * time.Second
 )
 
 func emptyTimer() *time.Timer {
