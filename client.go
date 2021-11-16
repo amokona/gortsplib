@@ -38,12 +38,6 @@ const (
 	clientUDPKeepalivePeriod = 20 * time.Second
 )
 
-func emptyTimer() *time.Timer {
-	t := time.NewTimer(0)
-	<-t.C
-	return t
-}
-
 func isAnyPort(p int) bool {
 	return p == 0 || p == 1
 }
@@ -1148,7 +1142,7 @@ func (c *Client) doAnnounce(u *base.URL, tracks Tracks) (*base.Response, error) 
 		Header: base.Header{
 			"Content-Type": base.HeaderValue{"application/sdp"},
 		},
-		Body: tracks.Write(),
+		Body: tracks.Write(false),
 	}, false)
 	if err != nil {
 		return nil, err
